@@ -1,0 +1,12 @@
+int a(int a1){
+    return a1 + 1.2;
+}
+
+{
+    int c, c1, c2;
+    c = 0;
+
+    if(c1 == c){
+        c2 = a(c);
+    }
+}
