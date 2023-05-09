@@ -104,8 +104,8 @@ tabela   = [[prefix "-" Neg],
             [binario "+" (:+:) AssocLeft, binario "-" (:-:) AssocLeft ]
            ]
 tabelaL = [[prefix "!" Not],
-           [binario "&" (:&:) AssocLeft],
-           [binario "|" (:|:) AssocLeft]
+           [binario "&&" (:&:) AssocLeft],
+           [binario "||" (:|:) AssocLeft]
           ]
 
 binario name fun assoc = Infix (do{reservedOp name; return fun }) assoc
@@ -118,11 +118,12 @@ expr = buildExpressionParser tabela fator
 fator = parens expr
        <|> fatorTryId
        <|> fatorTryNumeros
+       <|> do{s <- stringLiteral; return (Const (CString s))}
        <?> "simple expression"
 
 fatorTryId = try fatorChamadaFuncao <|> fatorVariavel
-fatorVariavel = do{i <- indentifier; return (IdVar i)}
-fatorChamadaFuncao = do{i <- indentifier; vs <- parens (listaParametros); return (Chamada i vs)}
+fatorVariavel = do{id <- indentifier; return (IdVar id)}
+fatorChamadaFuncao = do{id <- indentifier; vs <- parens (listaParametros); return (Chamada id vs)}
 
 fatorTryNumeros = try fatorFloat <|> fatorInteiro
 fatorInteiro = do {n <- natural; return (Const (CInt (fromIntegral n)))}
@@ -151,10 +152,10 @@ blocoPrincipal = do symbol "{"
 --
 blocoPrincipal' = do{d <- declaracoes; l <- listaCmd; return (d, l)}
 
-declaracoes = do{t <- tipo; i <- listaId; semi; ds <- declaracoes; return ([(x:#:t) | x <- i] ++ ds)}
+declaracoes = do{t <- tipo; id <- listaId; semi; ds <- declaracoes; return ([(x:#:t) | x <- id] ++ ds)}
               <|> return []
 
-listaId = do{i <- indentifier; is <- listaId'; return (i:is)} 
+listaId = do{id <- indentifier; ids <- listaId'; return (id:ids)} 
 
 listaId' = do{comma; listaId}
            <|> return []
@@ -171,14 +172,14 @@ listaCmd = do {c <- comando; cs <- listaCmd; return (c:cs)}
 comando = do{reserved "return"; e <- tvzExpressao; semi; return e}
           <|>do{reserved "if"; l <- parens exprL; b <- bloco; s <- senao; return (If l b s)}
           <|>do{reserved "while"; l <- parens exprL; b <- bloco; return (While l b)}
-          <|>do{reserved "print"; e <- parens expr; return (Imp e)}
-          <|>do{reserved "read"; i <- parens (indentifier); return (Leitura i) }
+          <|>do{reserved "print"; e <- parens expr; semi; return (Imp e)}
+          <|>do{reserved "read"; id <- parens (indentifier); semi; return (Leitura id) }
           <|>comandoTry
 
 comandoTry = try comamndoId <|> comandoFuncao
 
-comamndoId = do{i <- indentifier; symbol "="; e <- expr; semi; return (Atrib i e)}
-comandoFuncao = do{i <- indentifier; l <- parens (listaParametros); semi; return (Proc i l)}
+comamndoId = do{id <- indentifier; symbol "="; e <- expr; semi; return (Atrib id e)}
+comandoFuncao = do{id <- indentifier; l <- parens (listaParametros); semi; return (Proc id l)}
 
 tvzExpressao = do{e <- expr; return (Ret (Just e))}
                <|> return (Ret (Nothing))
@@ -202,10 +203,10 @@ tipoRetorno = do{t <- tipo; return t}
               <|>do{reserved "void"; return TVoid}
 
 funcao = do t <- tipoRetorno
-            i <- indentifier
+            id <- indentifier
             p <- parens declParametros
             b <- blocoPrincipal
-            return ((i :->: (p, t)), i, b)
+            return ((id :->: (p, t)), id, b)
 
 funcoes = do{f <- funcao; fs <- funcoes; return (f:fs)}
           <|> return []
@@ -219,7 +220,7 @@ funcoesListaFuncao funcoes = return [(f_fun x) | x <- funcoes]
 
 funcoesTripla funcoes = return [( f_id x, f_bp_d x, f_bp_l x) | x <- funcoes]
 
-parametro = do{t <- tipo; i <- indentifier; return (i:#:t)}
+parametro = do{t <- tipo; id <- indentifier; return (id:#:t)}
 
 declParametros = do{p <- parametro; ps <- parametros; return (p:ps)}
                  <|> return []
