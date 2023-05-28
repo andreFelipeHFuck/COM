@@ -1,3 +1,5 @@
+module Analisador_sintatico(analisadorSintatico) where 
+
 import System.IO
 import Text.Parsec
 import Text.Parsec.Expr
@@ -111,7 +113,6 @@ tabelaL = [[prefix "!" Not],
 binario name fun assoc = Infix (do{reservedOp name; return fun }) assoc
 prefix name fun = Prefix (do{reservedOp name; return fun })
 
-       
 expr = buildExpressionParser tabela fator
        <?> "expression"   
         
@@ -238,10 +239,14 @@ partida :: Parsec String u Programa
 partida = do {e <- programa; eof; return e}
 
 parserE e = runParser partida [] "Expressoes" e
-
+ 
 parserExpr s = case parserE s of
                      Left er -> print er
                      Right v -> (print v)
                      
 main = do txt <- readFile "texto.txt"
           parserExpr txt
+
+analisadorSintatico :: IO (Either ParseError Programa)
+analisadorSintatico = do input <- readFile "texto.txt"
+                         return (runParser partida () "texto.txt" input)
