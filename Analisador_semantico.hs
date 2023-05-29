@@ -1,5 +1,6 @@
 import System.IO
 import Analisador_sintatico
+import Text.XHtml (base)
 
 -- Monada Semantica
 
@@ -84,12 +85,18 @@ defFuncoes (Prog _ lf _ _) = lf
 listaVariaveis (Prog _ _ lv _) = lv
 bloco (Prog _ _ _ b) = b
 
+data VerTipo = I | D | N deriving (Eq, Show)
+
 varId (id :#: _) = id
 varTipo (_ :#: t) = t
 
-procIdVar _ [] = TVoid
+varTipo' t | t == TInt = I
+           | t == TDouble = D
+           | otherwise = N
+
+procIdVar _ [] = N
 procIdVar id (lv: lvs) = if varId lv == id
-                then varTipo lv
+                then varTipo' (varTipo lv)
                 else procIdVar id lvs
 
 isIdVar (IdVar _) = True
@@ -97,47 +104,6 @@ isIdVar _ = False
 
 idVar (IdVar id) = id
  
-constTipo (Const t) = t
-
-constante (Const (CInt a)) = True
-constante (Neg (Const (CInt a))) = True
-constante (Const (CDouble a)) = False
-constante (Neg (Const (CDouble a))) = False
-constante _ = False
-
-
--- constante' (a :+: b) = constante a && constante b
-constante' ((Const (CInt _)) :+: (Const (CInt _)) ) = True
-constante' ((IntDouble _) :+: (_) ) = False
-constante' ((_) :+: (IntDouble _) ) = False
-constante' _ = False
-
-intParaDouble (Neg c) = Neg (IntDouble c)
-intParaDouble c = IntDouble c
-
-varA (a :+: b) lv | procIdVar (idVar a) lv == TInt && not(constante b) = (intParaDouble a :+: b)
-                  | procIdVar (idVar a) lv == TDouble && constante b = (a :+: intParaDouble b)
-                  | otherwise = (a :+: b)
-
-varB (a :+: b) lv | not(constante a) && procIdVar (idVar b) lv == TInt = (a :+: intParaDouble b)
-                  | constante a && procIdVar (idVar b) lv == TDouble = (intParaDouble a :+: b)
-                  | otherwise = (a :+: b)
-
-verVar (a :+: b) lv | procIdVar (idVar a) lv == TInt && procIdVar (idVar b) lv == TDouble = (intParaDouble a :+: b)
-                    | procIdVar (idVar a) lv == TDouble && procIdVar (idVar b) lv == TInt = (a :+:  intParaDouble b)
-                    | otherwise = (a :+: b)
-
-verificaExprBinaria (a :+: b) lv | isIdVar a && isIdVar b = verVar (a :+: b) lv
-                                 | isIdVar a = varA (a :+: b) lv
-                                 | isIdVar b = varB (a :+: b) lv
-                                 | constante a && constante b == False = ((intParaDouble a) :+: b)
-                                 | constante a == False && constante b = (a :+: (intParaDouble b))
-                                 | constante a == False && constante' b = intParaDouble (a :+: b)
-                                 | constante' a && constante b == False = intParaDouble (a :+: b)
-                                 | constante' a && constante' b == False = ((intParaDouble a) :+: b)
-                                 | constante' a == False && constante' b = (a :+: (intParaDouble b))
-                                 | otherwise = (a :+: b)
-
 exprA (a :+: _) = a
 exprA (a :-: _) = a
 exprA (a :*: _) = a
@@ -150,32 +116,64 @@ exprB (_ :*: b) = b
 exprB (_ :/: b) = b
 exprB b = b
 
-verificaExpr' (Const (_) :+: Const (_)) = True
-verificaExpr' (Const (_) :-: Const (_)) = True
-verificaExpr' (Const (_) :*: Const (_)) = True
-verificaExpr' (Const (_) :/: Const (_)) = True
-verificaExpr' (Const (_)) = True
-verificaExpr' (_ :+: _) = False     
-verificaExpr' (_ :-: _) = False     
-verificaExpr' (_ :*: _) = False   
-verificaExpr' (_ :/: _) = False    
+exprO (_ :+: _) a b = (a :+: b)
+exprO (_ :-: _) a b = (a :-: b)
+exprO (_ :*: _) a b = (a :*: b)
+exprO (_ :/: _) a b = (a :/: b)
 
-verificaExpr'' (Const (_)) = False
-verificaExpr'' (_) = True
+constante (Const (CInt a)) = I
+constante (Neg (Const (CInt a))) = I
+constante (Const (CDouble a)) = D
+constante (Neg (Const (CDouble a))) = D
+constante _ = N
 
-verificaExpr expr lv | verificaExpr' expr =  verificaExprBinaria ((exprA expr) :+: (exprB  expr)) lv
-                     | not(verificaExpr' (exprA expr)) = ((verificaExprBinaria (verificaExpr (exprA expr) lv) lv) :+: (exprB expr))
-                     | not(verificaExpr' (exprB expr)) = ((exprA expr) :+: (verificaExprBinaria(verificaExpr (exprB expr) lv) lv))
-                     | verificaExpr' (exprA expr) = ((verificaExprBinaria (verificaExpr (exprA expr) lv) lv) :+: (exprB expr))
-                     | verificaExpr' (exprB expr) = ((exprA expr) :+: (verificaExprBinaria(verificaExpr (exprB expr) lv) lv))
+isConst (Const _) = True
+isConst (Neg (Const _)) = True
+isConst _ = False
 
--- verExpr (Const (CInt 1) :+: (IdVar "a" :+: IdVar "b")) ["a" :#: TInt,"c" :#: TInt,"b" :#: TDouble]
-verExpr (Const a) _ = (Const a)
-verExpr (IdVar a) _ = (IdVar a)
-verExpr (Const a :+: Const b) lv = verificaExprBinaria (Const (a) :+: Const (b)) lv
-verExpr expr lv = verificaExprBinaria ((verExpr (exprA expr) lv) :+: (verExpr (exprB expr) lv)) lv
+intParaDouble (Neg c) = Neg (IntDouble c)
+intParaDouble c = IntDouble c
 
-               
+verExprBin expr (ta, a) (tb, b) |ta == D && tb == I = (D, (exprO expr a (intParaDouble b)))
+                                |ta == I && tb == D = (D, (exprO expr (intParaDouble a) b))
+                                |ta == D && tb == D = (D, (exprO expr a b))
+                                |ta == I && tb == I = (I, (exprO expr a b))
+                               
+verExpr (Const c) _ = (constante (Const c), (Const c))
+verExpr (IdVar id) lv = (procIdVar id lv, (IdVar id))
+verExpr expr lv = verExprBin expr a b
+                 where 
+                      a = verExpr (exprA expr) lv
+                      b = verExpr (exprB expr) lv
+
+exprRA (a :==: _) = a
+exprRA (a :/=: _) = a
+exprRA (a :<: _) = a
+exprRA (a :>: _) = a
+exprRA (a :<=: _) = a
+exprRA (a :>=: _) = a
+
+exprRB (_ :==:b) = b
+exprRB (_ :/=:b) = b
+exprRB (_ :<: b) = b
+exprRB (_ :>: b) = b
+exprRB (_ :<=:b) = b
+exprRB (_ :>=:b) = b
+
+exprRO (_ :==: _) a b = (a :==: b)
+exprRO (_ :/=: _) a b = (a :/=: b)
+exprRO (_ :<: _) a b = (a :<: b)
+exprRO (_ :>: _) a b = (a :>: b)
+exprRO (_ :<=: _) a b = (a :<=: b)
+exprRO (_ :>=: _) a b = (a :>=: b)
+
+verExprR exprR lv | fst a == D && fst b == I = exprRO exprR (snd a) (intParaDouble (snd b))
+                  | fst a == I && fst b == D = exprRO exprR (intParaDouble (snd a)) (snd b)
+                  | otherwise = exprRO exprR (snd a) (snd b)
+                   where 
+                         a = verExpr (exprRA exprR) lv
+                         b = verExpr (exprRB exprR) lv
+
 -- lf = do sint <- analisadorSintatico
 --         let l = listaFuncoes sint 
 --         return l
@@ -183,5 +181,4 @@ verExpr expr lv = verificaExprBinaria ((verExpr (exprA expr) lv) :+: (verExpr (e
 teste = do sint <- analisadorSintatico
            let m = MS("Teste", sint)
            return m
-
 
