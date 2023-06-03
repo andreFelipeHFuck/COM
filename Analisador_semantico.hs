@@ -1,6 +1,5 @@
 import System.IO
 import Analisador_sintatico
-import Text.XHtml (base)
 
 -- Monada Semantica
 
@@ -80,29 +79,33 @@ data Comando = If ExprL Bloco Bloco
 erro s = MS ("Erro: " ++ s, ())
 adv s = MS ("Advertencia: " ++ s, ())
 
-listaFuncoes (Prog fs _ _ _) = fs
-defFuncoes (Prog _ lf _ _) = lf
-listaVariaveis (Prog _ _ lv _) = lv
-bloco (Prog _ _ _ b) = b
+data VerTipo = I | D | E deriving (Eq, Show)
 
-data VerTipo = I | D | N deriving (Eq, Show)
+tipo t | t == TInt = I
+       | t == TDouble = D
+       | otherwise = E
 
 varId (id :#: _) = id
 varTipo (_ :#: t) = t
 
-varTipo' t | t == TInt = I
-           | t == TDouble = D
-           | otherwise = N
-
-procIdVar _ [] = N
+procIdVar _ [] = E
 procIdVar id (lv: lvs) = if varId lv == id
-                then varTipo' (varTipo lv)
+                then tipo (varTipo lv)
                 else procIdVar id lvs
 
-isIdVar (IdVar _) = True
-isIdVar _ = False
+funcId (id :->: _) = id
+funcTipo (_ :->: (_, t)) = t
 
-idVar (IdVar id) = id
+procIdFunc _ [] = E
+procIdFunc id (lf:lfs) = if funcId lf == id 
+                         then tipo (funcTipo lf)
+                         else procIdFunc id lfs
+
+constante (Const (CInt a)) = I
+constante (Neg (Const (CInt a))) = I
+constante (Const (CDouble a)) = D
+constante (Neg (Const (CDouble a))) = D
+constante _ = E
  
 exprA (a :+: _) = a
 exprA (a :-: _) = a
@@ -121,30 +124,22 @@ exprO (_ :-: _) a b = (a :-: b)
 exprO (_ :*: _) a b = (a :*: b)
 exprO (_ :/: _) a b = (a :/: b)
 
-constante (Const (CInt a)) = I
-constante (Neg (Const (CInt a))) = I
-constante (Const (CDouble a)) = D
-constante (Neg (Const (CDouble a))) = D
-constante _ = N
-
-isConst (Const _) = True
-isConst (Neg (Const _)) = True
-isConst _ = False
-
 intParaDouble (Neg c) = Neg (IntDouble c)
 intParaDouble c = IntDouble c
 
-verExprBin expr (ta, a) (tb, b) |ta == D && tb == I = (D, (exprO expr a (intParaDouble b)))
-                                |ta == I && tb == D = (D, (exprO expr (intParaDouble a) b))
-                                |ta == D && tb == D = (D, (exprO expr a b))
-                                |ta == I && tb == I = (I, (exprO expr a b))
+verExprBin expr (ta, a) (tb, b) |ta == D && tb == I = do adv "Conversao de Int para Double"
+                                                         return (D, (exprO expr a (intParaDouble b)))
+                                |ta == I && tb == D = do adv "Conversao de Int para Double"
+                                                         return (D, (exprO expr (intParaDouble a) b))
+                                |ta == D && tb == D = do return (D, (exprO expr a b))
+                                |ta == I && tb == I = do return  (I, (exprO expr a b))
                                
-verExpr (Const c) _ = (constante (Const c), (Const c))
-verExpr (IdVar id) lv = (procIdVar id lv, (IdVar id))
-verExpr expr lv = verExprBin expr a b
-                 where 
-                      a = verExpr (exprA expr) lv
-                      b = verExpr (exprB expr) lv
+verExpr (Const c) _ _ = return (constante (Const c), (Const c))
+verExpr (IdVar id) lv _ = return (procIdVar id lv, (IdVar id))
+verExpr (Chamada id lp) _ lf = return (procIdFunc id lf, (Chamada id lp))
+verExpr expr lv lf = do a <- verExpr (exprA expr) lv lf
+                        b <- verExpr (exprB expr) lv lf
+                        verExprBin expr a b
 
 exprRA (a :==: _) = a
 exprRA (a :/=: _) = a
@@ -167,18 +162,65 @@ exprRO (_ :>: _) a b = (a :>: b)
 exprRO (_ :<=: _) a b = (a :<=: b)
 exprRO (_ :>=: _) a b = (a :>=: b)
 
-verExprR exprR lv | fst a == D && fst b == I = exprRO exprR (snd a) (intParaDouble (snd b))
-                  | fst a == I && fst b == D = exprRO exprR (intParaDouble (snd a)) (snd b)
-                  | otherwise = exprRO exprR (snd a) (snd b)
-                   where 
-                         a = verExpr (exprRA exprR) lv
-                         b = verExpr (exprRB exprR) lv
+verExprR exprR lv lf = do a <- verExpr (exprRA exprR) lv lf
+                          b <-  verExpr (exprRB exprR) lv lf
+                          if fst a == D && fst b == I
+                             then return (exprRO exprR (snd a) (intParaDouble (snd b)))
+                          else if fst a == I && fst b == D 
+                               then return (exprRO exprR (intParaDouble (snd a)) (snd b)) 
+                          else return (exprRO exprR (snd a) (snd b))
 
--- lf = do sint <- analisadorSintatico
---         let l = listaFuncoes sint 
---         return l
+exprLA (a :&: _) = a
+exprLA (a :|: _) = a
 
-teste = do sint <- analisadorSintatico
-           let m = MS("Teste", sint)
-           return m
+exprLB (_ :&: b) = b
+exprLB (_ :|: b) = b
+
+exprLO (_ :&: _) a b = (a :&: b)
+exprLO (_ :|: _) a b = (a :|: b)
+
+verExprL (Rel exprR) lv lf = do vr <- verExprR exprR lv lf
+                                return (Rel vr)
+verExprL (Not (Rel exprR)) lv lf = do vr <- verExprR exprR lv lf
+                                      return (Not (Rel vr))
+verExprL (Not exprL) lv lf = do a <- verExprL (exprLA exprL) lv lf
+                                b <- verExprL (exprLB exprL) lv lf
+                                return (Not ((exprLO exprL a b)))                           
+verExprL exprL lv lf = do a <- verExprL (exprLA exprL) lv lf
+                          b <- verExprL (exprLB exprL) lv lf 
+                          return (exprLO exprL a b)
+
+verComando' [] lv lf = return []
+verComando' (e:es) lv lf = do ve <- verExpr e lv lf
+                              ves <- verComando' es lv lf
+                              return ((snd ve):ves)
+
+--  Ret (Maybe Expr)
+verComando (If exprL b1 b2) lv lf = do vL <- verExprL exprL lv lf 
+                                       vb1 <- verBloco b1 lv lf
+                                       vb2 <- verBloco b2 lv lf
+                                       return ( If vL vb1 vb2)
+verComando (While exprL b) lv lf = do vL <- verExprL exprL lv lf
+                                      vb <- verBloco b lv lf
+                                      return (While vL vb)
+verComando (Atrib id expr) lv lf = do v <- verExpr expr lv lf
+                                      return (Atrib id (snd v))
+verComando (Leitura id) _ _ = return (Leitura id)
+verComando (Imp expr) lv lf = do v <- verExpr expr lv lf
+                                 return (Imp (snd v))
+verComando (Ret (Just expr)) lv lf = do v <- verExpr expr lv lf
+                                        return (Ret (Just (snd v)))
+verComando (Ret Nothing) _ _ = return (Ret Nothing)
+verComando (Proc id lExpr) lv lf = do lvExpr <- verComando' lExpr lv lf
+                                      return (Proc id lvExpr)
+                                       
+
+verBloco [] lv lf = return []
+verBloco (b:bs) lv lf = do vb <- (verComando b lv lf)
+                           vbs <- (verBloco bs lv lf)
+                           return (vb:vbs)
+
+semantico (Prog fs lf lv b) = do vb <- verBloco b lv fs
+                                 return vb
+
 

@@ -9,7 +9,7 @@ import Distribution.Simple (flagToProfDetailLevel)
 import Text.Parsec.Token (GenTokenParser(identifier))
 import Distribution.SPDX (License(NONE))
 import Control.Applicative (Alternative(empty))
-import Distribution.PackageDescription (PackageDescription(testedWith))
+import Distribution.PackageDescription (PackageDescription(testedWith), PackageFlag (flagName))
 import Text.Read (Lexeme(String))
 
 -- Estrutra da Árvore Sintática
@@ -243,10 +243,7 @@ parserE e = runParser partida [] "Expressoes" e
 parserExpr s = case parserE s of
                      Left er -> print er
                      Right v -> (print v)
-                     
-main = do txt <- readFile "texto.txt"
-          parserExpr txt
-
-analisadorSintatico :: IO (Either ParseError Programa)
+                
 analisadorSintatico = do input <- readFile "texto.txt"
-                         return (runParser partida () "texto.txt" input)
+                         --parserExpr input
+                         return (parserE input)
