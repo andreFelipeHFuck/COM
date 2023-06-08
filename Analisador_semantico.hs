@@ -81,15 +81,16 @@ exprB (_ :*: b) = b
 exprB (_ :/: b) = b
 exprB b = b
 
-exprMsg (_ :+: _)  = "+"
-exprMsg (_ :-: _)  = "-"
-exprMsg (_ :*: _)  = "*"
-exprMsg (_ :/: _)  = "/"
 
 exprO (_ :+: _) a b = (a :+: b)
 exprO (_ :-: _) a b = (a :-: b)
 exprO (_ :*: _) a b = (a :*: b)
 exprO (_ :/: _) a b = (a :/: b)
+
+exprMsg (_ :+: _)  = "+"
+exprMsg (_ :-: _)  = "-"
+exprMsg (_ :*: _)  = "*"
+exprMsg (_ :/: _)  = "/"
 
 intParaDouble (Neg c) = Neg (IntDouble c)
 intParaDouble c = IntDouble c
@@ -97,33 +98,36 @@ intParaDouble c = IntDouble c
 doubleParaInt (Neg c) = Neg (DoubleInt c)
 doubleParaInt c = DoubleInt c
 
-verExprBin id' expr (ta, a) (tb, b) |ta == D && tb == I = do adv ("Na função '" ++ id' ++ "':\n" 
-                                                                   ++"Conversao de Int para Double")
+verExprBin id' expr (ta, a) (tb, b) |ta == E && (tb == I || tb == D) = do return (tb, (exprO expr a b))
+                                    |(ta == I || ta == D) && tb == E = do return (ta, (exprO expr a b))  
+                                    |ta == D && tb == I = do adv ("Na função '" ++ id' ++ "':\n" 
+                                                                   ++ "Conversao de Int para Double na operação '"
+                                                                   ++ exprMsg expr ++ "'")
                                                              return (D, (exprO expr a (intParaDouble b)))
                                     |ta == I && tb == D = do adv ("Na função '" ++ id' ++ "':\n"
-                                                                   ++ "Conversao de Int para Double")
+                                                                   ++ "Conversao de Int para Double na operação '"
+                                                                   ++ exprMsg expr ++ "'")
                                                              return (D, (exprO expr (intParaDouble a) b))
                                     |ta == D && tb == D = do return (D, (exprO expr a b))
                                     |ta == I && tb == I = do return  (I, (exprO expr a b))
                                     |ta == S && (tb == I || tb == D) = do erro ("Na função '" ++ id' ++ "':\n" 
                                                                                 ++ "Operacao " ++ exprMsg expr 
-                                                                                ++ " nao aceita String nos seus operadores") 
+                                                                                ++ " não aceita String nos seus operadores") 
                                                                           return (tb, (exprO expr a b))
                                     |(ta == I || ta == D) && tb == S = do erro ("Na função '" ++ id' ++ "':\n"
                                                                                 ++ "Operacao " ++ exprMsg expr 
-                                                                                ++ " nao aceita String nos seus operadores") 
+                                                                                ++ " não aceita String nos seus operadores") 
                                                                           return (ta, (exprO expr a b))
                                     |ta == V || tb == V = do erro ("Na função '" ++ id' ++ "':\n" 
                                                                     ++ "Operacao " ++ exprMsg expr 
-                                                                    ++ " nao aceita procedimentos nos seus operadores")
+                                                                    ++ " não aceita procedimentos nos seus operadores")
                                                              return (E, (exprO expr a b))
-                                    |otherwise = do return (E, (exprO expr a b)) 
                                
 verExpr _ (Const c) _ _ = return (constante (Const c), (Const c))
 
 verExpr id' (IdVar id) lv _ = do if varTipo == E 
                                  then do erro("Na função '" ++ id' ++ "':\n"
-                                               ++ "O identidicaro '" ++ id ++ "' esta indefinido")
+                                               ++ "Referencia indefinida para '" ++ id ++ "'")
                                          return (E, (IdVar id))
                                  else return (varTipo, (IdVar id))
                           where 
@@ -173,9 +177,16 @@ exprRMsg (_ :>=: _) = ">="
 verExprR id' exprR lv fs = do a <- verExpr id' (exprRA exprR) lv fs
                               b <-  verExpr id' (exprRB exprR) lv fs
                               if fst a == D && fst b == I
-                                then return (exprRO exprR (snd a) (intParaDouble (snd b)))
+                                then do adv ("Na função '" ++ id' ++ "':\n"
+                                            ++ "Conversao de Int para Double na operação '"
+                                            ++ exprRMsg exprR ++ "'")
+                                        return (exprRO exprR (snd a) (intParaDouble (snd b)))
                               else if fst a == I && fst b == D 
-                                  then return (exprRO exprR (intParaDouble (snd a)) (snd b)) 
+                                  then do 
+                                         adv ("Na função '" ++ id' ++ "':\n"
+                                            ++ "Conversao de Int para Double na operação '"
+                                            ++ exprRMsg exprR ++ "'")
+                                         return (exprRO exprR (intParaDouble (snd a)) (snd b)) 
                               else if fst a == S && (fst b == I || fst b == D)
                                   then do erro ("Na função '" ++ id' ++ "':\n"
                                                  ++ "Operacao " ++ exprRMsg exprR 
@@ -225,11 +236,11 @@ verAtrib' id' (Atrib id expr) lv fs = do v <- verExpr id' expr lv fs
 verAtrib id' (Atrib id expr) lv fs = do v <- verExpr id' expr lv fs
                                         if fst v == I && var == D 
                                           then do adv ("Na função '" ++ id' ++ "':\n"
-                                                        ++ "Conversao de Int para Double em '" ++ id ++ "'")
+                                                        ++ "Conversao de Int para Double na atribuição de '" ++ id ++ "'")
                                                   return (Atrib id (intParaDouble (snd v)))
                                         else if fst v == D && var == I
                                            then do adv ("Na função '" ++ id' ++ "':\n"
-                                                        ++ "Conversao de Double para Int em '" ++ id ++ "'")
+                                                        ++ "Conversao de Double para Int na atribuição de '" ++ id ++ "'")
                                                    return (Atrib id (doubleParaInt (snd v)))
                                         else if fst v == S && var /= S
                                             then do erro ("Na função '" ++ id' ++ "':\n" 
@@ -244,13 +255,13 @@ verAtrib id' (Atrib id expr) lv fs = do v <- verExpr id' expr lv fs
 verRet id' (Ret (Just expr)) t lv fs = do v <- verExpr id' expr lv fs
                                           if fst v == I && t == D
                                              then do adv ("Na função '" ++ id' ++ "':\n"
-                                                           ++ "Conversao de Int para Double ")
+                                                           ++ "Conversao de Int para Double no retorno")
                                                      return (Ret (Just (intParaDouble (snd v))))
                                           else if fst v == D && t == I
                                                then do adv ("Na função '" ++ id' ++ "':\n"
-                                                             ++ "Conversao de Double para Int")
+                                                             ++ "Conversao de Double para Int no retorno")
                                                        return (Ret (Just (doubleParaInt (snd v))))
-                                          else if fst v /= t
+                                          else if fst v /= t && not(t == V && expr == (Const (CInt 0)))
                                                then do erro ("Na função '" ++ id' ++ "':\n" 
                                                               ++ "Tipo do retorno icompativel, se espera "
                                                               ++ printTipo t
@@ -316,14 +327,15 @@ verComando id' (Ret (Just expr)) t lv fs = do v <- verRet id' r t lv fs
                                               r = (Ret (Just expr))
 
 verComando id' (Ret Nothing) t _ _ = do if t /= V
-                                        then do erro ("Na função '" ++ id' ++ "':\n"
-                                                      ++ "Tipo de retorno incompativel")
+                                        then do erro ("Na função '" ++ id' ++ "':\n" 
+                                                       ++ "Tipo do retorno icompativel, se espera "
+                                                       ++ printTipo t)
                                                 return (Ret Nothing)
                                         else return (Ret Nothing)
 
 verComando id' (Proc id lExpr) _ lv fs = do if f == E
                                               then do erro ("Na função '" ++ id' ++ "':\n"
-                                                            ++ "A funcao '" ++ id ++ "' nao esta definida")
+                                                            ++ "A funcao '" ++ id ++ "' não esta definida")
                                                       return prc
                                             else do v <- verProc' id' prc lv fs
                                                     return v
@@ -387,11 +399,14 @@ verListaFuncoes (lf:lfs) fs = do vlf <- (verFuncao lf fs)
 semantico (Prog fs lf lv b) = do vfs <- verFuncoes fs
                                  vlp <- verReptFuncParametro fs
                                  vlv <- verVariaveis "main" lv
-                                 if vfs && vlv 
+                                 if vfs
                                  then do 
-                                        vb <- verBloco "main" b V lv fs
                                         vlf <- verListaFuncoes lf fs
-                                        return (Prog fs vlf lv vb)
+                                        if vlv
+                                        then do
+                                                vb <- verBloco "main" b V lv fs
+                                                return (Prog fs vlf lv vb)
+                                        else return (Prog fs vlf lv b) 
                                  else return (Prog fs lf lv b)
 
 printSemantica' p = do putStrLn (fst p)
