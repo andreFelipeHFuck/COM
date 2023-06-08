@@ -1,4 +1,17 @@
-module Analisador_sintatico(analisadorSintatico) where 
+module Analisador_sintatico(
+       Id,
+       Tipo(..),
+       TCons(..),
+       Expr(..),
+       ExprR(..),
+       ExprL(..),
+       Var(..),
+       Funcao(..),
+       Programa(..),
+       Bloco(..),
+       Comando(..),
+       parserE
+) where 
 
 import System.IO
 import Text.Parsec
@@ -11,21 +24,20 @@ import Distribution.SPDX (License(NONE))
 import Control.Applicative (Alternative(empty))
 import Distribution.PackageDescription (PackageDescription(testedWith), PackageFlag (flagName))
 import Text.Read (Lexeme(String))
-
--- Estrutra da Árvore Sintática
+import qualified Foreign.C as Tipo
 
 type Id = String
 
-data Type = TDouble 
+data Tipo = TDouble 
             |TInt 
             |TString 
             |TVoid
-            deriving Show
+            deriving (Eq, Show)
 
 data TCons = CDouble Double 
              |CInt Int 
              |CString String
-             deriving Show
+             deriving (Eq, Show)
 
 data Expr = Expr :+: Expr 
             |Expr :-: Expr 
@@ -33,10 +45,12 @@ data Expr = Expr :+: Expr
             |Expr :/: Expr 
             |Neg Expr 
             |Const TCons 
-            |IdVar String -- Construtor de variavel
+            |IdVar Id 
             |Chamada Id [Expr] 
-            |Lit String
-            deriving Show
+            |Lit String 
+            |IntDouble Expr 
+            |DoubleInt Expr 
+            deriving (Eq, Show)
 
 data ExprR = Expr :==: Expr 
              |Expr :/=: Expr 
@@ -44,32 +58,33 @@ data ExprR = Expr :==: Expr
              |Expr :>: Expr 
              |Expr :<=: Expr 
              |Expr :>=: Expr 
-             deriving Show
+             deriving (Eq, Show)
 
 data ExprL = ExprL :&: ExprL 
-             |ExprL :|: ExprL 
-             |Not ExprL 
-             |Rel ExprR
-             deriving Show
+            |ExprL :|: ExprL 
+            |Not ExprL 
+            |Rel ExprR
+            deriving (Eq, Show)
 
-data Var = Id :#: Type 
-           deriving Show
+data Var = Id :#: Tipo 
+           deriving (Eq, Show)
 
-data Funcao = Id :->: ([Var], Type) 
-              deriving Show
+data Funcao = Id :->: ([Var], Tipo) 
+              deriving (Eq, Show)     
 
-data Programa = Prog [Funcao] [(Id, [Var], Bloco)] [Var] Bloco 
+data Programa = Prog [Funcao] [(Id, [Var], Bloco)] [Var] Bloco
                 deriving Show
 
 type Bloco = [Comando]
+
 data Comando = If ExprL Bloco Bloco
-               |While ExprL Bloco
-               |Atrib Id Expr
-               |Leitura Id
-               |Imp Expr
-               |Ret (Maybe Expr)
-               |Proc Id [Expr]
-               deriving Show
+                |While ExprL Bloco
+                |Atrib Id Expr
+                |Leitura Id
+                |Imp Expr
+                |Ret (Maybe Expr)
+                |Proc Id [Expr]
+                deriving (Eq, Show)
 
 -- Definições da linguagem
 -- Configura palavras reservadas
@@ -243,7 +258,8 @@ parserE e = runParser partida [] "Expressoes" e
 parserExpr s = case parserE s of
                      Left er -> print er
                      Right v -> (print v)
-                
-analisadorSintatico = do input <- readFile "texto.txt"
-                         --parserExpr input
-                         return (parserE input)
+
+
+
+
+

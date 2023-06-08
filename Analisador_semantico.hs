@@ -17,71 +17,19 @@ instance Applicative Semantica where
 instance Monad Semantica where
     MS(s, a) >>= f = let MS(s', b) = f a in MS (s++s', b)
 
--- Estrutura da Arvore Sintatica
-type Id = String
+red = "\x1b[31m"
+yellow = "\x1b[33m"
+reset = "\x1b[0m"
 
-data Tipo = TDouble 
-            |TInt 
-            |TString 
-            |TVoid
-            deriving (Eq, Show)
-
-data TCons = CDouble Double 
-             |CInt Int 
-             |CString String
-             deriving (Eq, Show)
-
-data Expr = Expr :+: Expr 
-            |Expr :-: Expr 
-            |Expr :*: Expr 
-            |Expr :/: Expr 
-            |Neg Expr 
-            |Const TCons 
-            |IdVar Id 
-            |Chamada Id [Expr] 
-            |Lit String 
-            |IntDouble Expr 
-            |DoubleInt Expr 
-            deriving (Eq, Show)
-
-data ExprR = Expr :==: Expr 
-             |Expr :/=: Expr 
-             |Expr :<: Expr 
-             |Expr :>: Expr 
-             |Expr :<=: Expr 
-             |Expr :>=: Expr 
-             deriving (Eq, Show)
-
-data ExprL = ExprL :&: ExprL 
-            |ExprL :|: ExprL 
-            |Not ExprL 
-            |Rel ExprR
-            deriving (Eq, Show)
-
-data Var = Id :#: Tipo 
-           deriving (Eq, Show)
-
-data Funcao = Id :->: ([Var], Tipo) 
-              deriving (Eq, Show)     
-
-data Programa = Prog [Funcao] [(Id, [Var], Bloco)] [Var] Bloco
-                deriving Show
-
-type Bloco = [Comando]
-
-data Comando = If ExprL Bloco Bloco
-                |While ExprL Bloco
-                |Atrib Id Expr
-                |Leitura Id
-                |Imp Expr
-                |Ret (Maybe Expr)
-                |Proc Id [Expr]
-                deriving (Eq, Show)
-
-erro s = MS ("Erro: " ++ s, ())
-adv s = MS ("Advertencia: " ++ s, ())
+erro s = MS (red ++ "Erro: " ++ reset ++ s ++ "\n", ())
+adv s = MS (yellow ++ "Advertencia: " ++ reset ++ s ++ "\n", ())
 
 data VerTipo = I | D | S | V | E deriving (Eq, Show)
+
+printTipo I = "Int"
+printTipo D = "Double"
+printTipo S = "String"
+printTipo V = "Void"
 
 tipo t | t == TInt = I
        | t == TDouble = D
@@ -149,31 +97,31 @@ intParaDouble c = IntDouble c
 doubleParaInt (Neg c) = Neg (DoubleInt c)
 doubleParaInt c = DoubleInt c
 
-verExprBin expr (ta, a) (tb, b) |ta == D && tb == I = do adv "CONVERSAO DE Int PARA Double"
+verExprBin expr (ta, a) (tb, b) |ta == D && tb == I = do adv "Conversao de Int para Double"
                                                          return (D, (exprO expr a (intParaDouble b)))
-                                |ta == I && tb == D = do adv "CONVERSAO DE Int PARA Double"
+                                |ta == I && tb == D = do adv "Conversao de Int para Double"
                                                          return (D, (exprO expr (intParaDouble a) b))
                                 |ta == D && tb == D = do return (D, (exprO expr a b))
                                 |ta == I && tb == I = do return  (I, (exprO expr a b))
-                                |ta == S && (tb == I || tb == D) = do erro ("OPERACAO " ++ exprMsg expr ++ " NAO ACEITA String") 
+                                |ta == S && (tb == I || tb == D) = do erro ("Operacao " ++ exprMsg expr ++ " nao aceita String nos seus operadores") 
                                                                       return (tb, (exprO expr a b))
-                                |(ta == I || ta == D) && tb == S = do erro ("OPERACAO " ++ exprMsg expr ++ " NAO ACEITA String") 
+                                |(ta == I || ta == D) && tb == S = do erro ("Operacao " ++ exprMsg expr ++ " nao aceita String nos seus operadores") 
                                                                       return (ta, (exprO expr a b))
-                                |ta == V || tb == V = do erro ("OPERACAO " ++ exprMsg expr ++ " NAO ACEITA PROCEDIMENTOS")
+                                |ta == V || tb == V = do erro ("Operacao " ++ exprMsg expr ++ " nao aceita procedimentos nos seus operadores")
                                                          return (E, (exprO expr a b))
                                 |otherwise = do return (E, (exprO expr a b)) 
                                
 verExpr (Const c) _ _ = return (constante (Const c), (Const c))
 
 verExpr (IdVar id) lv _ = do if varTipo == E 
-                             then do erro("VARIAVEL " ++ id ++ " NAO DECLARADA")
+                             then do erro("O identidicaro '" ++ id ++ "' esta indefinido")
                                      return (E, (IdVar id))
                              else return (varTipo, (IdVar id))
                           where 
                                varTipo = procIdVar id lv
 
 verExpr (Chamada id lp) _ fs = do if funcTipo == E
-                                     then do erro ("FUNCAO " ++ id ++ " NAO FOI DECLARADA")
+                                     then do erro ("Referencia indefinida para '" ++ id ++ "'")
                                              return (E, (Chamada id lp))
                                   else return (funcTipo, (Chamada id lp))
                                where 
@@ -219,13 +167,13 @@ verExprR exprR lv fs = do a <- verExpr (exprRA exprR) lv fs
                           else if fst a == I && fst b == D 
                                then return (exprRO exprR (intParaDouble (snd a)) (snd b)) 
                           else if fst a == S && (fst b == I || fst b == D)
-                               then do erro ("OPERACAO " ++ exprRMsg exprR ++ " SO ACEITA String NOS DOIS LADOS")
+                               then do erro ("Operacao " ++ exprRMsg exprR ++ " so aceita String se estiver nos dois operadores")
                                        return (exprRO exprR (snd a) (snd b))
                           else if (fst a == I || fst a == D) && fst b == S
-                                then do erro ("OPERACAO " ++ exprRMsg exprR ++ " SO ACEITA String NOS DOIS LADOS")
+                                then do erro ("Operacao " ++ exprRMsg exprR ++ " so aceita String se estiver nos dois operadores")
                                         return (exprRO exprR (snd a) (snd b))
                           else if fst a == V || fst b == V 
-                                then do erro ("OPERACAO " ++ exprRMsg exprR ++ " NAO ACEITA PROCEDIMENTOS")
+                                then do erro ("Operacao " ++ exprRMsg exprR ++ " so aceita String se estiver nos dois operadores")
                                         return (exprRO exprR (snd a) (snd b))
                           else return (exprRO exprR (snd a) (snd b))
                             
@@ -259,26 +207,29 @@ verAtrib' (Atrib id expr) lv fs = do v <- verExpr expr lv fs
                                      return (Atrib id (snd v))
 
 verAtrib (Atrib id expr) lv fs = do v <- verExpr expr lv fs
-                                    if fst v == I && procIdVar id lv == D 
-                                       then do adv "CONVERSAO DE Int PARA Double "
+                                    if fst v == I && var == D 
+                                       then do adv ("Conversao de Int para Double em '" ++ id ++ "'")
                                                return (Atrib id (intParaDouble (snd v)))
-                                    else if fst v == D && procIdVar id lv == I
-                                        then do adv "CONVERSAO DE Double PARA Int "
+                                    else if fst v == D && var == I
+                                        then do adv ("Conversao de Double para Int em '" ++ id ++ "'")
                                                 return (Atrib id (doubleParaInt (snd v)))
-                                    else if fst v == S && procIdVar id lv /= S
-                                        then do erro ("A VARIAVEL " ++ id ++ " FOI ATRIBUIDA COM UM TIPO INCONPATIVEL ")
+                                    else if fst v == S && var /= S
+                                        then do erro ("A variavel '" ++ id ++ "' do tipo " ++ tipo ++ " nao pode ser atribuida com o tipo " ++ printTipo (fst v))
                                                 return (Atrib id (snd v))
                                     else return (Atrib id (snd v))
+                                 where 
+                                        var = procIdVar id lv
+                                        tipo = printTipo var
 
 verRet (Ret (Just expr)) t lv fs = do v <- verExpr expr lv fs
                                       if fst v == I && t == D
-                                        then do adv "CONVERSAO DE Int PARA Double "
+                                        then do adv "Conversao de Int para Double "
                                                 return (Ret (Just (intParaDouble (snd v))))
                                         else if fst v == D && t == I
-                                             then do adv "CONVERSAO DE Double PARA Int "
+                                             then do adv "Conversao de Double para Int "
                                                      return (Ret (Just (doubleParaInt (snd v))))
-                                        else if fst v == S && t /= S
-                                             then do erro ("TIPO DO RETORNO INCOMPATIVEL ")
+                                        else if fst v /= t
+                                             then do erro ("Tipo do retorno icompativel")
                                                      return (Ret (Just expr))
                                         else return (Ret (Just expr))
 
@@ -286,9 +237,9 @@ verProc' (Proc id lExpr) lv fs = do if length lExpr == length numP
                                       then do vlExpr <- verProc lExpr lp lv fs
                                               return (Proc id vlExpr)
                                       else if length lExpr > length numP
-                                          then do erro ("EXCESSO DE PARAMETROS NA FUNCAO " ++ id ++ " ")
+                                          then do erro ("Excesso de argumentos na funcao " ++ id ++ " ")
                                                   return (Proc id lExpr)
-                                      else do erro ("FALTA PARAMETROS NA FUNCAO " ++ id ++ " ")
+                                      else do erro ("Muito poucos argumento na chamada de funcao '" ++ id ++ "'")
                                               return (Proc id lExpr) 
                                       where 
                                            f = procFunc id fs
@@ -318,7 +269,7 @@ verComando (While exprL b) t lv fs = do vL <- verExprL exprL lv fs
 verComando (Atrib id expr) _ lv fs = if elemExiste varId var lv
                                     then do v <- verAtrib atr lv fs
                                             return v
-                                    else do erro ("VARIAVEL " ++ id ++ " NAO FOI DECLARADA ")
+                                    else do erro ("O identidicador '" ++ id ++ "' esta indefinido")
                                             v' <- verAtrib' atr lv fs
                                             return v'
                                     where 
@@ -336,12 +287,12 @@ verComando (Ret (Just expr)) t lv fs = do v <- verRet r t lv fs
                                              r = (Ret (Just expr))
 
 verComando (Ret Nothing) t _ _ = do if t /= V
-                                    then do erro ("TIPO DO RETORNO INCOMPATIVEL ")
+                                    then do erro ("Tipo de retorno incompativel")
                                             return (Ret Nothing)
                                     else return (Ret Nothing)
 
 verComando (Proc id lExpr) _ lv fs = do if f == E
-                                        then do erro ("FUNCAO " ++ id ++ " NAO DEFINIDA ")
+                                        then do erro ("A funcao '" ++ id ++ "' nao esta definida")
                                                 return prc
                                         else do v <- verProc' prc lv fs
                                                 return v
@@ -366,19 +317,19 @@ verReptVar (lv:lvs) |elemExiste varId lv lvs = (True, varId lv)
 verReptFuncParametro [] = return True
 verReptFuncParametro (fs:fss) = do let v = verReptVar (funcParamentros fs)
                                    if fst v
-                                   then do erro ("O PARAMETRO " ++ snd v ++ " APARECE REPETIDA ")
+                                   then do erro ("O parametro '" ++ snd v ++ "' foi declarado mais de uma vez")
                                            return False
                                    else return True
 
 verFuncoes fs = do let f = verReptFunc fs
                    if fst f
-                   then do erro("A FUNCAO " ++ snd f ++ " APARECE REPETIDA ")
+                   then do erro("A funcao '" ++ snd f ++ "' foi declarada mais de uma vez")
                            return False
                    else return True
 
 verVariaveis lv = do let v = verReptVar lv
                      if fst v
-                     then do erro ("A VARIAVEL " ++ snd v ++ " APARECE REPETIDA ")
+                     then do erro ("A variavel '" ++ snd v ++ "' foi declarada mais de uma vez")
                              return False
                      else return True                 
 
@@ -408,3 +359,17 @@ semantico (Prog fs lf lv b) = do vfs <- verFuncoes fs
                                         return (Prog fs vlf lv vb)
                                  else return (Prog fs lf lv b)
 
+printSemantica' p = do putStrLn (fst p)
+                       print (snd p)
+
+printSemantica p = do let sem = semantico p
+                      case sem of
+                        MS p -> printSemantica' p
+
+main = do input <- readFile "texto.txt"
+          let sin = parserE input
+          case sin of 
+                Left er -> print er
+                Right v -> printSemantica v
+          
+        
