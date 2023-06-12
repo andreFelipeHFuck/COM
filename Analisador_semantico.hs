@@ -101,11 +101,11 @@ doubleParaInt c = DoubleInt c
 verExprBin id' expr (ta, a) (tb, b) |ta == E && (tb == I || tb == D) = do return (tb, (exprO expr a b))
                                     |(ta == I || ta == D) && tb == E = do return (ta, (exprO expr a b))  
                                     |ta == D && tb == I = do adv ("Na função '" ++ id' ++ "':\n" 
-                                                                   ++ "Conversao de Int para Double na operação '"
+                                                                   ++ "Conversão de Int para Double na operação '"
                                                                    ++ exprMsg expr ++ "'")
                                                              return (D, (exprO expr a (intParaDouble b)))
                                     |ta == I && tb == D = do adv ("Na função '" ++ id' ++ "':\n"
-                                                                   ++ "Conversao de Int para Double na operação '"
+                                                                   ++ "Conversão de Int para Double na operação '"
                                                                    ++ exprMsg expr ++ "'")
                                                              return (D, (exprO expr (intParaDouble a) b))
                                     |ta == D && tb == D = do return (D, (exprO expr a b))
@@ -122,24 +122,81 @@ verExprBin id' expr (ta, a) (tb, b) |ta == E && (tb == I || tb == D) = do return
                                                                     ++ "Operacao " ++ exprMsg expr 
                                                                     ++ " não aceita procedimentos nos seus operadores")
                                                              return (E, (exprO expr a b))
-                               
+                                    |otherwise = return(E, (exprO expr a b))
+
+verParametros'' id' (Chamada id lp) lv fs = do if length lp == length numP
+                                                  then do vlp <- verParametros' id id' lp flp lv fs
+                                                          return (Chamada id vlp)
+                                               else if length lp > length numP
+                                                   then do erro ("Na função '" ++ id' ++ "':\n"
+                                                                 ++ "Excesso de argumentos na função " ++ id ++ " ")
+                                                           return (Chamada id lp)
+                                               else do erro ("Na função '" ++ id' ++ "':\n"
+                                                             ++ "Muito poucos argumento na chamada de função '" ++ id ++ "'")
+                                                       return (Chamada id lp)
+                                           where 
+                                                 f = procFunc id fs
+                                                 flp = funcParamentros f
+                                                 numP = funcParamentros (procFunc id fs)
+
+
+idChamada (Chamada id _) = id
+
+verParametros' _ _ [] [] _ _ = return []
+verParametros' id id' (lp:lps) (fp:fps) lv fs = do vlp <- verExpr id' lp lv fs
+                                                   vlps <- verParametros' id id' lps fps lv fs
+                                                   if fst vlp == I && vp == D
+                                                      then do adv ("Na função '" ++ id' ++ "':\n"
+                                                                   ++ "Converção de Int para Double na passagem do parametro '"
+                                                                   ++ idP ++ "' da função '" ++ id ++ "'")
+                                                              return ((intParaDouble (snd vlp)):vlps)
+                                                   else if fst vlp == D && vp == I
+                                                        then do adv ("Na função '" ++ id' ++ "':\n"
+                                                                     ++ "Converção de Double para Int na passagem do parametro '"
+                                                                     ++ idP ++ "' da função '" ++ id ++ "'")
+                                                                return ((doubleParaInt (snd vlp)):vlps)
+                                                   else if fst vlp == S && vp /= S
+                                                        then do erro ("Na função '" ++ id' ++ "':\n"
+                                                                      ++ "O parametro '" ++ idP ++ "',na função '"
+                                                                      ++id ++ "'," ++ "do tipo "
+                                                                      ++ t ++ " não pode ser atribuido com o tipo " ++ printTipo (fst vlp))
+                                                                return ((snd vlp):vlps)
+                                                   else return ((snd vlp):vlps)
+                                           where 
+                                                vp = tipo (varTipo fp)
+                                                t = printTipo vp
+                                                idP = varId fp 
+
+verChamada id' (Chamada id lp) lv fs = do if f == E
+                                          then do erro ("Na função '" ++ id' ++ "':\n"
+                                                         ++ "A função '" ++ id ++ "' não esta definida")
+                                                  return chm 
+                                          else do v <- verParametros'' id' chm lv fs
+                                                  return v 
+                                          where 
+                                                chm = (Chamada id lp)
+                                                f = procIdFunc id fs
 verExpr _ (Const c) _ _ = return (constante (Const c), (Const c))
 
 verExpr id' (IdVar id) lv _ = do if varTipo == E 
                                  then do erro("Na função '" ++ id' ++ "':\n"
-                                               ++ "Referencia indefinida para '" ++ id ++ "'")
+                                               ++ "Referencia indefinida para a variável '" ++ id ++ "'")
                                          return (E, (IdVar id))
                                  else return (varTipo, (IdVar id))
                           where 
                                varTipo = procIdVar id lv
-
-verExpr id' (Chamada id lp) _ fs = do if funcTipo == E
-                                      then do erro ("Na função '" ++ id' ++ "':\n"
-                                                     ++ "Referencia indefinida para '" ++ id ++ "'")
-                                              return (E, (Chamada id lp))
-                                      else return (funcTipo, (Chamada id lp))
+                               
+verExpr id' (Chamada id lp) lv fs = do if funcTipo == E
+                                       then do erro ("Na função '" ++ id' ++ "':\n"
+                                                     ++ "Referencia indefinida para a função '" ++ id ++ "'")
+                                               return (E, (Chamada id lp))
+                                       else do  vlp <- verChamada id' chm lv fs
+                                                return (funcTipo, vlp)
                                where 
+                                     chm = (Chamada id lp)
                                      funcTipo = procIdFunc id fs
+                                     fp = funcParamentros (procFunc id fs)
+
 verExpr id' expr lv fs = do a <- verExpr id' (exprA expr) lv fs
                             b <- verExpr id' (exprB expr) lv fs
                             verExprBin id' expr a b
@@ -178,13 +235,13 @@ verExprR id' exprR lv fs = do a <- verExpr id' (exprRA exprR) lv fs
                               b <-  verExpr id' (exprRB exprR) lv fs
                               if fst a == D && fst b == I
                                 then do adv ("Na função '" ++ id' ++ "':\n"
-                                            ++ "Conversao de Int para Double na operação '"
+                                            ++ "Conversão de Int para Double na operação '"
                                             ++ exprRMsg exprR ++ "'")
                                         return (exprRO exprR (snd a) (intParaDouble (snd b)))
                               else if fst a == I && fst b == D 
                                   then do 
                                          adv ("Na função '" ++ id' ++ "':\n"
-                                            ++ "Conversao de Int para Double na operação '"
+                                            ++ "Conversão de Int para Double na operação '"
                                             ++ exprRMsg exprR ++ "'")
                                          return (exprRO exprR (intParaDouble (snd a)) (snd b)) 
                               else if fst a == S && (fst b == I || fst b == D)
@@ -236,30 +293,35 @@ verAtrib' id' (Atrib id expr) lv fs = do v <- verExpr id' expr lv fs
 verAtrib id' (Atrib id expr) lv fs = do v <- verExpr id' expr lv fs
                                         if fst v == I && var == D 
                                           then do adv ("Na função '" ++ id' ++ "':\n"
-                                                        ++ "Conversao de Int para Double na atribuição de '" ++ id ++ "'")
+                                                        ++ "Conversão de Int para Double na atribuição de '" ++ id ++ "'")
                                                   return (Atrib id (intParaDouble (snd v)))
                                         else if fst v == D && var == I
                                            then do adv ("Na função '" ++ id' ++ "':\n"
-                                                        ++ "Conversao de Double para Int na atribuição de '" ++ id ++ "'")
+                                                        ++ "Conversão de Double para Int na atribuição de '" ++ id ++ "'")
                                                    return (Atrib id (doubleParaInt (snd v)))
                                         else if fst v == S && var /= S
                                             then do erro ("Na função '" ++ id' ++ "':\n" 
-                                                           ++ "A variavel '" ++ id ++ "' do tipo " 
-                                                           ++ tipo ++ " nao pode ser atribuida com o tipo " ++ printTipo (fst v))
+                                                           ++ "A variável '" ++ id ++ "' do tipo " 
+                                                           ++ t ++ " não pode ser atribuida com o tipo " ++ printTipo (fst v))
+                                                    return (Atrib id (snd v))
+                                        else if fst v /= S && var == S
+                                            then do erro ("Na função '" ++ id' ++ "':\n" 
+                                                           ++ "A variável '" ++ id ++ "' do tipo " 
+                                                           ++ t ++ " não pode ser atribuida com o tipo " ++ printTipo (fst v))
                                                     return (Atrib id (snd v))
                                         else return (Atrib id (snd v))
                                  where 
                                         var = procIdVar id lv
-                                        tipo = printTipo var
+                                        t = printTipo var
 
 verRet id' (Ret (Just expr)) t lv fs = do v <- verExpr id' expr lv fs
                                           if fst v == I && t == D
                                              then do adv ("Na função '" ++ id' ++ "':\n"
-                                                           ++ "Conversao de Int para Double no retorno")
+                                                           ++ "Conversão de Int para Double no retorno")
                                                      return (Ret (Just (intParaDouble (snd v))))
                                           else if fst v == D && t == I
                                                then do adv ("Na função '" ++ id' ++ "':\n"
-                                                             ++ "Conversao de Double para Int no retorno")
+                                                             ++ "Conversão de Double para Int no retorno")
                                                        return (Ret (Just (doubleParaInt (snd v))))
                                           else if fst v /= t && not(t == V && expr == (Const (CInt 0)))
                                                then do erro ("Na função '" ++ id' ++ "':\n" 
@@ -288,12 +350,25 @@ verProc _ [] [] lv fs = return []
 verProc id' (e:es) (p:ps) lv fs = do ve <- verExpr id' e lv fs
                                      ves <- verProc id' es ps lv fs
                                      if fst ve == I && vp == D
-                                        then return ((intParaDouble (snd ve)):ves)
+                                        then do adv ("Na função '" ++ id' ++ "':\n"
+                                                     ++ "Converção de Int para Double em '"
+                                                     ++ id ++ "'")
+                                                return ((intParaDouble (snd ve)):ves)
                                      else if fst ve == D && vp == I
-                                        then return ((doubleParaInt (snd ve)):ves)
+                                        then do adv ("Na função '" ++ id' ++ "':\n"
+                                                     ++ "Converção de Double para Int em '"
+                                                     ++ id ++ "'")
+                                                return ((doubleParaInt (snd ve)):ves)
+                                     else if fst ve == S && vp /= S
+                                          then do erro ("Na função '" ++ id' ++ "':\n"
+                                                       ++ "O parametro '" ++ id ++ "' do tipo "
+                                                       ++ t ++ "não pode ser atribuido com o tipo " ++ printTipo (fst ve))
+                                                  return ((snd ve):ves) 
                                      else return ((snd ve):ves)                                    
                                  where
                                       vp = tipo (varTipo p)
+                                      t = printTipo vp
+                                      id = varId p
 
 verComando id' (If exprL b1 b2) t lv fs = do vL <- verExprL id' exprL lv fs
                                              vb1 <- verBloco id' b1 t lv fs
@@ -335,7 +410,7 @@ verComando id' (Ret Nothing) t _ _ = do if t /= V
 
 verComando id' (Proc id lExpr) _ lv fs = do if f == E
                                               then do erro ("Na função '" ++ id' ++ "':\n"
-                                                            ++ "A funcao '" ++ id ++ "' não esta definida")
+                                                            ++ "A função '" ++ id ++ "' não esta definida")
                                                       return prc
                                             else do v <- verProc' id' prc lv fs
                                                     return v
@@ -369,14 +444,14 @@ verReptFuncParametro (fs:fss) = do let v = verReptVar (funcParamentros fs)
 
 verFuncoes fs = do let f = verReptFunc fs
                    if fst f
-                   then do erro("A funcao '" ++ snd f ++ "' foi declarada mais de uma vez")
+                   then do erro("A função '" ++ snd f ++ "' foi declarada mais de uma vez")
                            return False
                    else return True
 
 verVariaveis id' lv = do let v = verReptVar lv
                          if fst v
                          then do erro ("Na função '" ++ id' ++ "':\n"
-                                        ++ "A variavel '" ++ snd v ++ "' foi declarada mais de uma vez")
+                                        ++ "A variável '" ++ snd v ++ "' foi declarada mais de uma vez")
                                  return False
                          else return True                 
 
